@@ -19,4 +19,4 @@ resource "google_project_service" "apis" {
 
   # Không tắt API khi destroy resource này (để an toàn cho dữ liệu)
   disable_on_destroy = false
-}s
+}
