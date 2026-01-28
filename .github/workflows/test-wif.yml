@@ -3,7 +3,7 @@ name: Test WIF Connection
 on:
   push:
     branches:
-      - feat/init-terraform  # Chạy khi push code lên nhánh này
+      - feature/init-teraform  # Chạy khi push code lên nhánh này
   workflow_dispatch:         # Cho phép chạy thủ công từ tab Actions
 
 permissions:
