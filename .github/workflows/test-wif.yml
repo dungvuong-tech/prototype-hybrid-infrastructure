@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/init-teraform  # Chạy khi push code lên nhánh này
+      - feat/init-terraform
   workflow_dispatch:         # Cho phép chạy thủ công từ tab Actions
 
 permissions:
