@@ -1,0 +1,77 @@
+name: App 1 CI/CD
+
+on:
+  push:
+    branches: [dev, staging, main]
+    # Smart Dispatching: Chỉ chạy khi sửa code trong thư mục app1
+    paths: ['src/app/app1/**']
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  # Tên service cụ thể cho App 1
+  SERVICE_BASE_NAME: order-api-app1
+  # Thư mục chứa code của App 1 (Quan trọng cho lệnh docker build)
+  APP_WORKING_DIR: 'src/app/app1'
+
+  REGION: asia-southeast1
+  GAR_BASE_URL: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/app-repo
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy App 1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set Environment Variables
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "TARGET_ENV=prod" >> $GITHUB_ENV
+            echo "SERVICE_NAME=${{ env.SERVICE_BASE_NAME }}-prod" >> $GITHUB_ENV
+          elif [[ "${{ github.ref_name }}" == "staging" ]]; then
+            echo "TARGET_ENV=staging" >> $GITHUB_ENV
+            echo "SERVICE_NAME=${{ env.SERVICE_BASE_NAME }}-staging" >> $GITHUB_ENV
+          else
+            echo "TARGET_ENV=dev" >> $GITHUB_ENV
+            echo "SERVICE_NAME=${{ env.SERVICE_BASE_NAME }}-dev" >> $GITHUB_ENV
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Configure Docker Auth
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and Push Container
+        # Chỉ định thư mục làm việc là src/app/app1
+        working-directory: ${{ env.APP_WORKING_DIR }}
+        run: |
+          IMAGE_URI="${{ env.GAR_BASE_URL }}/${{ env.SERVICE_BASE_NAME }}:${{ github.sha }}"
+          
+          # Docker build sẽ tìm Dockerfile ngay trong thư mục app1
+          docker build -t $IMAGE_URI .
+          docker push $IMAGE_URI
+          
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          image: ${{ env.IMAGE_URI }}
+          env_vars: |
+            TARGET_ENV=${{ env.TARGET_ENV }}
+          flags: '--allow-unauthenticated'
+
+      - name: Show Output
+        run: echo "App 1 deployed to ${{ env.SERVICE_NAME }}"
