@@ -1,0 +1,33 @@
+name: Test WIF Connection
+
+on:
+  push:
+    branches:
+      - feat/init-terraform  # Chạy khi push code lên nhánh này
+  workflow_dispatch:         # Cho phép chạy thủ công từ tab Actions
+
+permissions:
+  id-token: write # BẮT BUỘC: Cần thiết để xin OIDC token
+  contents: read  # Để checkout code
+
+jobs:
+  verify-gcp-access:
+    name: Verify Google Cloud Access
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Bước quan trọng: Xác thực dùng WIF
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      # Kiểm tra kết quả: In ra thông tin project đang kết nối
+      - name: Verify gcloud configuration
+        run: |
+          echo "Successfully authenticated!"
+          gcloud info
+          gcloud auth list
