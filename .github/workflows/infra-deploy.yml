@@ -1,0 +1,79 @@
+name: Infra Deploy
+
+on:
+  pull_request:
+    branches: [dev, staging, main]
+    paths: ['infra/terraform/**'] # Smart Dispatching: Chỉ chạy khi sửa code Infra
+  push:
+    branches: [dev, staging, main]
+    paths: ['infra/terraform/**']
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write # Để bot có thể comment kết quả plan vào PR (tùy chọn nâng cao)
+
+env:
+  TF_WORKING_DIR: 'infra/terraform'
+
+jobs:
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    # Chạy trên PR hoặc Push (để validate trước khi apply)
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init -backend-config="bucket=tf-state-prototype-cicd-mlops" # Đảm bảo tên bucket đúng với cái bạn tạo thủ công
+
+      - name: Terraform Plan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        # Truyền biến project_id và region vào (lấy từ secrets/vars hoặc hardcode nếu muốn test nhanh)
+        run: |
+          terraform plan \
+            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var="region=asia-southeast1" \
+            -input=false
+
+  terraform-apply:
+    name: Terraform Apply
+    needs: terraform-plan
+    # Chỉ chạy khi merge (sự kiện push) vào các nhánh chính, KHÔNG chạy trên PR
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init -backend-config="bucket=tf-state-prototype-cicd-mlops"
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform apply -auto-approve \
+            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var="region=asia-southeast1" \
+            -input=false
